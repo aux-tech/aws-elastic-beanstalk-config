@@ -1,8 +1,8 @@
 name: Deploy Development Environment
 env:
-    APP_NAME: BIYO-Dev
-    ENVINRONMENT_NAME: BIYO-Dev-env
-    S3_BUCKET: byioclosets-dev-versions
+    APP_NAME: your-eb-app-name
+    ENVINRONMENT_NAME: your-eb-env-name
+    S3_BUCKET: bucket-of-your-app-versions
     AWS_REGION: sa-east-1
     AWS_PLATFORM: php-8.1
     PIPELINE_ID: ${GITHUB_RUN_ID}-${GITHUB_RUN_NUMBER}
