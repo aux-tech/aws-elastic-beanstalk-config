@@ -1,0 +1,80 @@
+name: Deploy Development Environment
+env:
+    APP_NAME: BIYO-Dev
+    ENVINRONMENT_NAME: BIYO-Dev-env
+    S3_BUCKET: byioclosets-dev-versions
+    AWS_REGION: sa-east-1
+    AWS_PLATFORM: php-8.1
+    PIPELINE_ID: ${GITHUB_RUN_ID}-${GITHUB_RUN_NUMBER}
+
+on:
+    push:
+        branches:
+            - "main"
+jobs:
+    Create-Deploy-Version:
+        runs-on: ubuntu-latest
+        steps:
+            - name: 📂 Checkout Source Code
+              uses: actions/checkout@v2
+            - name: 🔧 Setup PHP
+              uses: shivammathur/setup-php@2.25.2
+              with:
+                  php-version: "8.1"
+            - name: Install PHP Dependencies
+              run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
+            - uses: actions/setup-node@v3
+              with:
+                  node-version: "16"
+            - name: Install Yarn
+              run: npm install -g yarn
+            - name: Install JS Dependencies
+              run: yarn install --production
+            - name: Compile Front End
+              run: yarn prod
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v2
+              with:
+                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ secrets.AWS_ACCESS_SECRET }}
+                  aws-region: ${{ env.AWS_REGION }}
+            - name: Deploy Version to AWS EB
+              run: |
+                  AWS_VERSION_LABEL=${{env.APP_NAME}}-${{env.PIPELINE_ID}}
+                  echo "Creating Source Bundle"
+                  zip -r ${{env.APP_NAME}}.zip ./
+                  S3_KEY="$AWS_VERSION_LABEL.zip"
+                  echo "Uploading Source Bundle to S3"
+                  aws s3 cp ${{env.APP_NAME}}.zip s3://${{env.S3_BUCKET}}/${S3_KEY} --region ${{env.AWS_REGION}}
+                  echo "Creating Elastic Beanstalk version"
+                  aws elasticbeanstalk create-application-version --application-name ${{env.APP_NAME}} --version-label $AWS_VERSION_LABEL --region ${{env.AWS_REGION}} --source-bundle S3Bucket=${{env.S3_BUCKET}},S3Key=${S3_KEY} --auto-create-application
+    Deploy-AWS-EB:
+        needs: [Create-Deploy-Version]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v2
+            - name: Set up Python 3.6 (needed for eb cli)
+              uses: actions/setup-python@v4
+              with:
+                  python-version: "3.x"
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v2
+              with:
+                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ secrets.AWS_ACCESS_SECRET }}
+                  aws-region: ${{ env.AWS_REGION }}
+            - name: Deploy Version to AWS EB
+              run: |
+                  AWS_VERSION_LABEL=${{env.APP_NAME}}-${{env.PIPELINE_ID}}
+                  echo "Installing PIP and Updating IT"
+                  python -m pip install --upgrade pip
+                  echo "Downgrading PyYAML to 5.3.1 because of bug https://github.com/aws/aws-cli/issues/8036"
+                  pip3 install pyyaml==5.3.1 
+                  echo "Installing EB CLI"
+                  pip install awsebcli --upgrade
+                  echo "EB CLI Version"
+                  eb --version
+                  echo "Deploy init"
+                  eb init -i ${{env.APP_NAME}} -p ${{env.AWS_PLATFORM}} -k ${{secrets.AWS_EC2_DEV_SSHKEY_ID}} --region ${{env.AWS_REGION}}
+                  eb deploy ${{env.ENVINRONMENT_NAME}} --version ${AWS_VERSION_LABEL}
+                  echo "Deploy finished"

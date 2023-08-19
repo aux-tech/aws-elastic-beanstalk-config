@@ -1,0 +1,44 @@
+name: Check Source Code
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+jobs:
+  Test-PHP-Dependencies:
+    runs-on: ubuntu-latest
+    steps:   
+    - name: 📂 Checkout Source Code
+      uses: actions/checkout@v2
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+    - name: Install Yarn
+      run: npm install -g yarn
+    - name: Install JS Dependencies
+      run: yarn install
+    - name: 🔧 Setup PHP
+      uses: shivammathur/setup-php@2.25.2
+      with:
+        php-version: '8.1'
+    - name: Install and Check PHP Dependencies
+      run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
+    - name: Generate Open API Definition
+      run: php artisan swagger:generate
+    - name: Validate OpenAPI definition
+      uses: char0n/apidom-validate@v1
+      with:
+        definition-file: storage/api-docs/api-docs.json
+  Test-JS-Dependencies:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📂 Checkout Source Code
+      uses: actions/checkout@v2
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+    - name: Install Yarn
+      run: npm install -g yarn
+    - name: Install JS Dependencies
+      run: yarn install
+    - name: Check Front End Compilation
+      run: yarn build-check
